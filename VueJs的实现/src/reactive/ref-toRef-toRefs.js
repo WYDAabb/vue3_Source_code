@@ -253,5 +253,5 @@ const obj = reactive({ foo: 1, bar: 2 })
 
 const refFoo = toRef(obj, "foo")
 
-console.log(refFoo.value);
+console.log(refFoo);
 

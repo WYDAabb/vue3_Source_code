@@ -177,7 +177,6 @@ export function createReactive(data, isShallow = false, isReadonly = false) {
             return res
         }
     })
-
 }
 
 //响应式函数
