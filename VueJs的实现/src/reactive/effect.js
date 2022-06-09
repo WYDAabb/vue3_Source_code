@@ -54,7 +54,7 @@ weakMap:{
 
 //追踪变化函数 也可以说是收集依赖函数
 function track(target, key) {
-    if (!activeEffect) return
+    if (!activeEffect || !shouldTrack) return //停止追踪时和没有副作用函数时 直接返回
     let depsMap = bucket.get(target)
     if (!depsMap) {
         bucket.set(target, (depsMap = new Map()))
@@ -68,7 +68,7 @@ function track(target, key) {
 }
 
 //触发变化函数
-function trigger(target, key, type) {
+function trigger(target, key, type, newValue) {
     //根据target从桶中取得 depsMap 是key ==> effect
     const depsMap = bucket.get(target);
     //如果没有就返回出去
@@ -83,8 +83,34 @@ function trigger(target, key, type) {
             effectsToRun.add(effectFn)
         }
     })
-    // console.log(type, key);
-    //当操作为ADD 和 DELETE时候 重新执行
+
+    //1.对数组的判断
+    if (type === "ADD" && Array.isArray(target)) {
+        //取出与length相关的副作用函数
+        const lengthEffects = depsMap.get('length')
+        lengthEffects && lengthEffects.forEach(effectFn => {
+            if (effectFn !== activeEffect) {
+                effectsToRun.add(effectFn)
+            }
+        })
+    }
+
+    //2.如果操作目标是数组，并且修改了数组的length属性
+    if (Array.isArray(target) && key === 'length') {
+        //对于索引大于或等于新的length值得元素
+        //需要取出相关的副作用函数并添加到effectsToRun中
+        depsMap.forEach((effects, key) => {
+            if (key >= newValue) {  //之前得长度大于等于新的索引长度
+                effects && effects.forEach(effectFn => {
+                    if (effectFn !== activeEffect) {
+                        effectsToRun.add(effectFn)
+                    }
+                })
+            }
+        })
+    }
+
+    // 代理对象 当操作为ADD 和 DELETE时候 重新执行
     if (type === "ADD" || type === "DELETE") {
         //取得与ITERATE_KEY相关的副作用函数变量
         const iterateEffects = depsMap.get(ITERATE_KEY)
@@ -94,8 +120,9 @@ function trigger(target, key, type) {
                 effectsToRun.add(effectFn)
             }
         })
-
     }
+
+    //执行
     effectsToRun.forEach(effectFn => {
         if (effectFn.options.scheduler) { //如果这个调度执行函数存在那么就延缓执行
             effectFn.options.scheduler(effectFn)
@@ -106,9 +133,43 @@ function trigger(target, key, type) {
 
 }
 
+//重写数组中的查找方法
+const arrayInstrumentations = {} //存储数组中的查找方法
+const ArrayFindMethods = ['includes', 'indexOf', 'lastIndexOf']
+ArrayFindMethods.forEach(method => {
+    const originMethod = Array.prototype[method]
+    arrayInstrumentations[method] = function (...args) {
+        //this是代理对象，先在代理对象中查找，将结果存储到res中
+        let res = originMethod.apply(this, args)
+        if (res === false) {
+            //res如果是false 说明没找到 通过this.raw拿到原始数组，再去查找并更新res
+            res = originMethod.apply(this.raw, args)
+        }
+        return res
+    }
+});
+
+//重写数组中的 栈方法 栈方法会隐式的修改数组长度
+// 一个标记变量，代表是否进行追踪。默认值为true，即允许追踪
+let shouldTrack = true;
+const arrayStackMethods = ['push', 'pop', 'shift', 'unshift', 'splice']
+arrayStackMethods.forEach(method => {
+    //获取原始的方法 
+    const originMethod = Array.prototype[method]
+    arrayInstrumentations[method] = function (...args) {
+        //在调用原始方法之前 禁止追踪
+        shouldTrack = false
+        //方法的默认行为
+        let res = originMethod.apply(this, args)
+        //调用方法后回复原来的状态
+        shouldTrack = true
+        return res
+    }
+})
+
+
 const bucket = new WeakMap();
 const ITERATE_KEY = Symbol();//因为ownKeys不具备属于自己的键值 所以自定义键值 for-in 使用
-
 //isShallow 判断是否是浅响应 isReadonly 只读
 //创建响应式函数
 export function createReactive(data, isShallow = false, isReadonly = false) {
@@ -119,15 +180,25 @@ export function createReactive(data, isShallow = false, isReadonly = false) {
                 return target
             }
 
+            //判断操作是否是数组 并且key是我们定义的数组方法 arrayInstrumentations中的
+            //返回定义在arrayInstrumentations上的值
+            if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
+                return Reflect.get(arrayInstrumentations, key, receiver)
+            }
+
             // 非只读的时候 才建立收集依赖 要不只读的时候浪费性能 只读肯定不是响应式 因为不能修改
-            if (!isReadonly) {
+            if (!isReadonly && typeof key !== 'symbol') { //key不是symbol才会追踪
                 track(target, key);
             }
+
             const res = Reflect.get(target, key, receiver);
+
             //浅响应 直接返回
             if (isShallow) {
                 return res
             }
+
+            //深度响应式
             if (typeof res === 'object' && res !== null) {
                 return isReadonly ? readonly(res) : reactive(res) //调用reactive 将结果包装成响应式数据并返回
             }
@@ -140,13 +211,15 @@ export function createReactive(data, isShallow = false, isReadonly = false) {
             }
             const oldValue = target[key];
             //判断属性是否存在 如果存在的话那么就是设置 不存在就是添加
-            const type = Object.prototype.hasOwnProperty.call(target, key) ? "SET" : "ADD";
+            const type = Array.isArray(target)
+                //如果代理目标是数组，则检测被设置的索引值是否小于数组长度  如果是对象判断对象上是否有这个属性
+                ? Number(key) < target.length ? "SET" : "ADD" : Object.prototype.hasOwnProperty.call(target, key) ? "SET" : "ADD";
             const res = Reflect.set(target, key, newValue, receiver)
             // 判断receiver是target的代理对象 就执行解决了 child[[set]]调用和parent[[set]]调用 两次响应式函数执行的问题
             if (target === receiver.raw) {
                 //旧的值和新的值不同的时候 在触发响应 并且都不是NAN的时候 在触发响应
                 if (oldValue !== newValue && (oldValue === oldValue || newValue === newValue)) {
-                    trigger(target, key, type)
+                    trigger(target, key, type, newValue) //增加第四个参数 触发响应的新值
                 }
             }
             return res
@@ -158,8 +231,8 @@ export function createReactive(data, isShallow = false, isReadonly = false) {
         },
         //拦截for in函数  因为track是symbol值 所以track也点改变
         ownKeys(target) {
-            //将副作用函数和ITERATE_KEY相关联
-            track(target, ITERATE_KEY)
+            //判断是否是数组 数组也会forin循环 ? 数组length函数 : 将副作用函数和ITERATE_KEY相关联
+            track(target, Array.isArray(target) ? 'length' : ITERATE_KEY)
             return Reflect.ownKeys(target)
         },
         deleteProperty(target, key) {
@@ -179,23 +252,40 @@ export function createReactive(data, isShallow = false, isReadonly = false) {
     })
 }
 
-//响应式函数
+
+//定义一个map实例，存储原始对象到代理对象的映射 优先检查是否已经存在的代理对象 避免为一个原始对象多次创建代理对象的问题
+const reactiveMap = new Map();
 function reactive(obj) {
-    return createReactive(obj)
+    //优先通过原始对象obj寻找之前创建的代理对象，如果找到了，直接返回已有的代理对象
+    const existionProxy = reactiveMap.get(obj)
+    if (existionProxy) {
+        return existionProxy
+    }
+    //创建新的代理对象 
+    const proxy = createReactive(obj)
+    //存储到Map中 从而避免重复创建
+    reactiveMap.set(obj, proxy)
+    return proxy
 }
 //只读函数
 function shallowReadonly(obj) {
-    return createReactive(obj, true, true /* 只读 */)
+    return createReactive(obj, true,/* 浅响应式 */ true)
 }
 
 function readonly(obj) {
     return createReactive(obj, false, true /* 只读 */)
 }
 
-const arr = reactive(["foo"])
+
+
+const arr = reactive(["2"])
 
 effect(() => {
-    console.log(arr[0]);
+    console.log(arr);
+    arr.push(1)
+})
+effect(() => {
+    arr.pop(1)
 })
 
-arr[0] = 6
+

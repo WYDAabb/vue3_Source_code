@@ -1,56 +1,3 @@
-
-//追踪变化函数 也可以说是收集依赖函数
-function track(target, key) {
-    if (!activeEffect || !shouldTrack) return //停止追踪时和没有副作用函数时 直接返回
-    let depsMap = bucket.get(target)
-    if (!depsMap) {
-        bucket.set(target, (depsMap = new Map()))
-    }
-    let deps = depsMap.get(key);
-    if (!deps) {
-        depsMap.set(key, (deps = new Set()))
-    }
-    deps.add(activeEffect);
-    activeEffect.deps.push(deps)
-}
-
-
-//重写数组中的查找方法
-const arrayInstrumentations = {} //存储数组中的查找方法
-const ArrayFindMethods = ['includes', 'indexOf', 'lastIndexOf']
-ArrayFindMethods.forEach(method => {
-    const originMethod = Array.prototype[method]
-    arrayInstrumentations[method] = function (...args) {
-        //this是代理对象，先在代理对象中查找，将结果存储到res中
-        let res = originMethod.apply(this, args)
-        if (res === false) {
-            //res如果是false 说明没找到 通过this.raw拿到原始数组，再去查找并更新res
-            res = originMethod.apply(this.raw, args)
-        }
-        return res
-    }
-});
-
-//重写数组中的 栈方法 栈方法会隐式的修改数组长度
-// 一个标记变量，代表是否进行追踪。默认值为true，即允许追踪
-let shouldTrack = true;
-const arrayStackMethods = ['push', 'pop', 'shift', 'unshift', 'splice']
-arrayStackMethods.forEach(method => {
-    //获取原始的方法 
-    const originMethod = Array.prototype[method]
-    arrayInstrumentations[method] = function (...args) {
-        //在调用原始方法之前 禁止追踪
-        shouldTrack = false
-        //方法的默认行为
-        let res = originMethod.apply(this, args)
-        //调用方法后回复原来的状态
-        shouldTrack = true
-        return res
-    }
-})
-
-
-
 export function createReactive(data, isShallow = false, isReadonly = false) {
     return new Proxy(data, {
         get(target, key, receiver) {// receiver 代表代理对象
@@ -146,17 +93,3 @@ function reactive(obj) {
     reactiveMap.set(obj, proxy)
     return proxy
 }
-
-
-
-const arr = reactive(["2"])
-
-effect(() => {
-    console.log(arr);
-    arr.push(1)
-})
-effect(() => {
-    arr.pop(1)
-})
-
-
