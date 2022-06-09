@@ -185,7 +185,7 @@ function reactive(obj) {
 }
 //只读函数
 function shallowReadonly(obj) {
-    return createReactive(obj, true, true /* 只读 */)
+    return createReactive(obj, true,/* 浅响应式 */ true)
 }
 
 function readonly(obj) {
