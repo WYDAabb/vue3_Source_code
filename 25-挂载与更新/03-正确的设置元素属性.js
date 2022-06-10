@@ -1,21 +1,24 @@
-const vnode = {
-    type: 'div',
-    //使用props来描述一个元素的属性 key代表属性名称 value代表属性的值
+
+const vnode1 = {
+    type: 'button',
     props: {
-        id: 'foo'
+        disabled: ''
     },
-    children: [
-        {
-            type: 'p',
-            children: 'hello'
-        }
-    ]
+    children: 'Button'
+}
+
+//用in操作符判断key是否存在对应的DomProperties 以及特殊只读属性的处理
+function shouldSetAsProps(el, key, value) {
+    //特殊处理
+    if (key === ' from' && el.taName === 'INPUT') return false
+    //兜底
+    return key in el
 }
 
 
 function createRenderer(options) {
 
-    const { createElement, setElementText, insert } = options
+    const { createElement, setElementText, insert, patchProps } = options
 
     //mountElement 挂载函数
     function mountElement(vnode, container) {
@@ -30,13 +33,10 @@ function createRenderer(options) {
                 patch(null, child, el)
             });
         }
-
         // props属性处理
         if (vnode.props) {
             for (const key in vnode.props) {
-                el.setAttribute(key, vnode.props[key])
-                //也可以使用DOM对象直接设置
-                // el[key] = vnode.props[key]
+                patchProps(el, key, null, vnode.props[key])
             }
         }
 
@@ -86,9 +86,32 @@ const options1 = {  //浏览器使用
     //用于给定的parent下添加指定元素
     insert(el, parent, anchor = null) {
         parent.insertBefore(el, anchor)
+    },
+    //用来处理props中的属性
+    /* 
+    * params
+    * 挂载节点el  
+    * 当前元素属性的key
+    * 修改前的属性值
+    * 当前元素属性的props值
+    */
+    patchProps(el, key, preValue, nextValue) {
+        //使用shouldSetAsProps函数来判断是否作为Dom Properties设置
+        if (shouldSetAsProps(el, key, nextValue)) {
+            //获取DOM properties的类型
+            const type = typeof el[key];
+            //如果是布尔类型，并且value是空字符串，则矫正为true 优先设置Dom Properties
+            if (type === 'boolean' && nextValue === '') {
+                el[key] = true;
+            } else {
+                el[key] = value;
+            }
+        } else {
+            el.setAttribute(key, nextValue)
+        }
     }
 
 }
 const renderer = createRenderer(options1)
 
-renderer.render(vnode, document.querySelector('#app'))
+renderer.render(vnode1, document.querySelector('#app'))

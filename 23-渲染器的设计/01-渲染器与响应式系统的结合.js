@@ -10,4 +10,6 @@ effect(() => {
     renderer(`<h1>${count.value}</h1>`, document.getElementById('app'))
 })
 
-count.value++
+document.getElementById('btn').addEventListener('click', () => {
+    count.value++
+})

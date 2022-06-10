@@ -1,4 +1,11 @@
+//创建渲染器函数
 function createRenderer() {
+    //patch函数传入三个参数 第一个旧的vnode 第二个新的vnode 第三个挂载点
+    //patch 打补丁 寻找变更节点 以及挂载操作
+    function patch(n1, n2, container) { }
+
+
+    //树形vnode节点 ，第二个参数是挂载节点
     function render(vnode, container) {
         if (vnode) {
             //如果新的vnode存在 将其与旧的vnode一起传递给patch函数 进行打补丁 我叫做patch比较函数
@@ -10,12 +17,17 @@ function createRenderer() {
                 container.innerHTML = ''
             }
         }
-        //将vnode存储到container._vnode下面 既后续渲染中旧的vnode
+        //将vnode存储到container._vnode下面 【也就是旧的vnode节点】
         container._vnode = vnode
     }
 
+    //服务端渲染使用
+    function hydrate() { }
+
+
     return {
-        render
+        render,
+        hydrate
     }
 }
 
@@ -29,7 +41,7 @@ renderer.render(vnode2, document.getElementById('app'))
 renderer.render(null, document.getElementById('app'))
 
 
-//patch函数传入三个参数 第一个旧的vnode 第二个新的vnode 第三个同期
+
 function patch(n1, n2, container) {
 
 }

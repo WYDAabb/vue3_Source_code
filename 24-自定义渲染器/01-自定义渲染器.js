@@ -3,7 +3,6 @@ const vnode = {
     children: 'hello'
 }
 
-
 //mountElement 挂载函数 有弊端 只能dom使用
 function mountElement(vnode, container) {
     //使用vnode tag名称创建标签名称
@@ -41,10 +40,11 @@ function createRenderer(options) {
         if (!n1) {
             mountElement(n2, container);
         } else {
-            //n1存在 意味着打补丁 暂时省略
+            //n1存在 意味着打补丁比较 暂时省略
         }
     }
 
+    //render渲染
     function render(vnode, container) {
         if (vnode) {
             //如果新的vnode存在 将其与旧的vnode一起传递给patch函数 进行打补丁 我叫做patch比较函数
@@ -59,6 +59,9 @@ function createRenderer(options) {
         //将vnode存储到container._vnode下面 既后续渲染中旧的vnode
         container._vnode = vnode
     }
+
+    //服务端渲染使用
+    function hydrate() { }
 
     return {
         render
@@ -98,8 +101,9 @@ const options2 = { //node使用
         parent.children = el
     }
 }
+const container = { type: 'root' }
 
 // 将浏览器中的domAPI抽离出来 作为配置项传入
 const renderer = createRenderer(options2)
 //调用render函数渲染该vnode
-renderer.render(vnode, document.querySelector('#app'))
+renderer.render(vnode, container)
