@@ -1,18 +1,17 @@
-const vnode1 = {
-    type: 'p',
-    props: {
-        onClick: [
-            () => {
-                alert('clicked 1')
-            },
-            () => {
-                alert('clicked 2')
-            }
-        ]
-
-    },
-    children: 'text'
+// 文本节点的type标识
+const Text = Symbol()
+const TextVnode = {
+    type: Text,
+    children: 'Some Text'
 }
+
+//注释节点
+const Comment = Symbol();
+const CommonVnode = {
+    type: Comment,
+    children: 'Some Comment'
+}
+
 
 //用in操作符判断key是否存在对应的DomProperties 以及特殊只读属性的处理
 function shouldSetAsProps(el, key, value) {
@@ -26,13 +25,14 @@ function shouldSetAsProps(el, key, value) {
 
 function createRenderer(options) {
 
-    const { createElement, setElementText, insert, patchProps } = options
+    const { createElement, setElementText, insert, patchProps, createText, setText } = options
 
     //mountElement 挂载函数
     function mountElement(vnode, container) {
         //让vnode.el引用真实dom元素 为了后续卸载dom节点使用 因为dom卸载节点需要使用父元素
         const el = vnode.el = createElement(vnode.type)
-        //children处理
+        //挂载子节点，首先判断children的类型 
+        //如果是字符串类型，说明是文本子节点
         if (typeof vnode.children === 'string') {
             //因此只需要设置元素的文本节点
             setElementText(el, vnode.children)
@@ -58,12 +58,44 @@ function createRenderer(options) {
             parent.removeChild(vnode.el)
         }
     }
+    //更新子节点
+    function patchChildren(n1, n2, container) {
+        //判断新子节点的类型是否为文字节点
+        if (typeof n2.children === 'string') {
+            //当旧的节点为一组子节点的时候 才需要逐个卸载
+            if (Array.isArray(n1.children)) {
+                n1.children.forEach((c) => unmount(c))
+            }
+            setElementText(container, n2.children)
+            //判断新子节点是狗是一组子节点
+        } else if (Array.isArray(n2.children)) {
+            if (Array.isArray(n1.children)) { //判断旧的节点是也是一组子节点
+                n1.children.forEach(c => unmount(c))
+                n2.children.forEach(c => patch(null, c, container))
+            } else {
+                /* 
+                要么旧的子节点要么是文字节点，要么不存在
+                但无论哪一种情况，我们只需要将容器清空，然后将新的子节点挂载
+                */
+                setElementText(container, '')
+                n2.children.forEach(c => patch(null, c, container))
+            }
+        } else {
+            //代码运行到这里说明新子节点不存在 旧的子节点是一组子节点 逐个卸载就行
+            if (Array.isArray(n1.children)) {
+                n1.children.forEach(c => unmount(c))
+            } else if (typeof n1.children === 'string') {
+                setElementText(container, '')
+            }
+        }
+    }
+
     //对比函数
     function patchElement(n1, n2) {
         const el = n2.el = n1.el
         const oldProps = n1.props
         const newProps = n2.props
-
+        //更新props
         for (const key in newProps) {
             if (newProps[key] !== oldProps[key]) {
                 patchProps(el, key, oldProps[key], newProps[key])
@@ -74,6 +106,9 @@ function createRenderer(options) {
                 patchProps(el, key, oldProps[key], null)
             }
         }
+
+        //第二步 更新children
+        patchChildren(n1, n2, el)
     }
 
 
@@ -96,8 +131,16 @@ function createRenderer(options) {
                 //n1,n2都存在
                 patchElement(n1, n2)
             }
-        } else if (typeof type === 'object') {
-            //如果n2.type是对象 描述的是组件
+        } else if (typeof type === Text) {
+            if (!n1) {
+                const el = n2.el = createText(n2.children)
+                insert(el, container)
+            } else { //旧的节点存在
+                const el = n2.el = n1.el
+                if (n2.children !== n1.children) {
+                    setText(el, n2.children)
+                }
+            }
         } else if (type === 'XXX') {
             //其他类型
         }
@@ -135,6 +178,14 @@ const options1 = {  //浏览器使用
     insert(el, parent, anchor = null) {
         parent.insertBefore(el, anchor)
     },
+    //创建文本节点
+    createText(text) {
+        return document.createTextNode(text)
+    },
+    //将原来文本节点的内容换成新的文本
+    setText(el, text) {
+        el.nodeValue = text
+    },
     //用来处理props中的属性
     /* 
     * params
@@ -146,7 +197,7 @@ const options1 = {  //浏览器使用
     patchProps(el, key, preValue, nextValue) {
         //匹配以on开头的属性 视其为事件
         if (/^on/.test(key)) {
-            //获取为该元素伪造的事件处理函数 设置为一个对象事件名:事件函数
+            //获取为该元素伪造的事件处理函数 设置为一个对象事件名:事件函数  减少removeEventListener的使用
             let invokers = el._vei || (el._vei = {})
             let invoker = invokers[key]
             const name = key.slice(2).toLowerCase()
@@ -155,16 +206,21 @@ const options1 = {  //浏览器使用
                     //如果没有invoker 则将一个伪造的invoker缓存到el.vei中  
                     //vei 是 vue event invoker 的首字母缩写
                     invoker = el._vei[key] = (e) => {
-                        //当伪造的事件处理函数执行时,会执行真正的事件处理函数 也就是执行invoker.value函数
+                        //e.timeStamp 是事件发生的时间
+                        //如果事件触发的时间早于事件处理函数绑定的时间， 则不执行事件处理函数
+                        if (e.timeStamp < invoker.attached) return
                         if (Array.isArray(invoker.value)) {
                             invoker.value.forEach(fn => fn(e))
                         } else {
+                            //当伪造的事件处理函数执行时,会执行真正的事件处理函数 也就是执行invoker.value函数
                             invoker.value(e)
                         }
 
                     }
                     //将真正的事件处理函数赋值给invoker.value
                     invoker.value = nextValue;
+                    //添加invoker.attached属性 存储事件处理函数被绑定的时间
+                    invoker.attached = performance.now()
                     //绑定事件
                     el.addEventListener(name, invoker)
                 } else {
@@ -175,7 +231,7 @@ const options1 = {  //浏览器使用
                 //之前事件绑定函数不存在 且之前绑定的invoker存在 移除绑定
                 el.removeEventListener(name, invoker)
             }
-        } else if (key === 'class') {      //对class的特殊处理 
+        } else if (key === 'class') {      //对class的特殊处理  DOM Properties 叫做className
             el.className = nextValue || ''
         } else if (shouldSetAsProps(el, key, nextValue)) {
             //获取DOM properties的类型
@@ -194,5 +250,4 @@ const options1 = {  //浏览器使用
 }
 const renderer = createRenderer(options1)
 
-renderer.render(vnode1, document.querySelector('#app'))
-
+renderer.render(vnode, document.querySelector('#app'))

@@ -9,14 +9,6 @@
 </head>
 
 <body>
-    <!-- <div id="app"></div> -->
-
-
-    <!-- <script src="https://unpkg.com/@vue/reactivity@3.0.5/dist/reactivity.global.js"></script> -->
-    <!-- <script src="./01-挂载子节点和元素的属性.js"></script> -->
-    <!-- <script src="./04-class的处理.js"></script> -->
-
-
     <div id="app"></div>
 
     <script src="https://unpkg.com/@vue/reactivity@3.0.5/dist/reactivity.global.js"></script>
@@ -117,7 +109,7 @@
             }
         }
 
-        const renderer = createRenderer({
+        const options1 = {
             createElement(tag) {
                 return document.createElement(tag)
             },
@@ -127,73 +119,89 @@
             insert(el, parent, anchor = null) {
                 parent.insertBefore(el, anchor)
             },
-            patchProps(el, key, prevValue, nextValue) {
+            patchProps(el, key, preValue, nextValue) {
+                //匹配以on开头的属性 视其为事件
                 if (/^on/.test(key)) {
-                    const invokers = el._vei || (el._vei = {})
+                    //获取为该元素伪造的事件处理函数 设置为一个对象事件名:事件函数  减少removeEventListener的使用
+                    let invokers = el._vei || (el._vei = {})
                     let invoker = invokers[key]
                     const name = key.slice(2).toLowerCase()
                     if (nextValue) {
                         if (!invoker) {
+                            //如果没有invoker 则将一个伪造的invoker缓存到el.vei中  
+                            //vei 是 vue event invoker 的首字母缩写
                             invoker = el._vei[key] = (e) => {
+                                //e.timeStamp 是事件发生的时间
+                                //如果事件触发的时间早于事件处理函数绑定的时间， 则不执行事件处理函数
+                                if (e.timeStamp < invoker.attached) return
                                 if (Array.isArray(invoker.value)) {
                                     invoker.value.forEach(fn => fn(e))
                                 } else {
+                                    //当伪造的事件处理函数执行时,会执行真正的事件处理函数 也就是执行invoker.value函数
                                     invoker.value(e)
                                 }
+
                             }
-                            invoker.value = nextValue
+                            //将真正的事件处理函数赋值给invoker.value
+                            invoker.value = nextValue;
+                            //添加invoker.attached属性 存储事件处理函数被绑定的时间
+                            invoker.attached = performance.now()
+                            //绑定事件
                             el.addEventListener(name, invoker)
                         } else {
+                            //如果invoker存在 那么证明是更新 只需要更新值就可以
                             invoker.value = nextValue
                         }
                     } else if (invoker) {
+                        //之前事件绑定函数不存在 且之前绑定的invoker存在 移除绑定
                         el.removeEventListener(name, invoker)
                     }
-                } else if (key === 'class') {
+                } else if (key === 'class') {      //对class的特殊处理  DOM Properties 叫做className
                     el.className = nextValue || ''
                 } else if (shouldSetAsProps(el, key, nextValue)) {
-                    const type = typeof el[key]
+                    //获取DOM properties的类型
+                    const type = typeof el[key];
+                    //如果是布尔类型，并且value是空字符串，则矫正为true 优先设置Dom Properties
                     if (type === 'boolean' && nextValue === '') {
-                        el[key] = true
+                        el[key] = true;
                     } else {
-                        el[key] = nextValue
+                        el[key] = value;
                     }
                 } else {
                     el.setAttribute(key, nextValue)
                 }
             }
-        })
 
-        const vnode = {
-            type: 'p',
-            props: {
-                onClick: [
-                    () => {
-                        alert('clicked 1')
-                    },
-                    () => {
-                        alert('clicked 2')
+        }
+
+        const renderer = createRenderer(options1)
+
+        const { effect, ref } = VueReactivity
+
+        const bol = ref(false)
+
+        effect(() => {
+            const vnode = {
+                type: 'div',
+                props: bol.value ? {
+                    onClick: () => {
+                        alert('父元素 clicked')
+                    }
+                } : {},
+                children: [
+                    {
+                        type: 'p',
+                        props: {
+                            onClick: () => {
+                                bol.value = true
+                            }
+                        },
+                        children: 'text'
                     }
                 ]
-            },
-            children: 'text'
-        }
-        renderer.render(vnode, document.querySelector('#app'))
-
-// const newVnode = {
-//   type: 'p',
-//   props: {
-//     onContextmenu: () => {
-//       alert('contextmenu')
-//     }
-//   },
-//   children: 'text'
-// }
-// setTimeout(() => {
-//   renderer.render(newVnode, document.querySelector('#app'))
-//   console.log('update')
-// }, 1000)
-
+            }
+            renderer.render(vnode, document.querySelector('#app'))
+        })
 
 
     </script>
