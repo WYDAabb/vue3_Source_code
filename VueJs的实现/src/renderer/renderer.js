@@ -72,8 +72,10 @@ function createRenderer(options) {
                 n1.children.forEach((c) => unmount(c))
             }
             setElementText(container, n2.children)
-            //判断新子节点是狗是一组子节点
+
+            //判断新子节点是一组子节点  diff算法写在这里
         } else if (Array.isArray(n2.children)) {
+
             if (Array.isArray(n1.children)) { //判断旧的节点是也是一组子节点
                 n1.children.forEach(c => unmount(c))
                 n2.children.forEach(c => patch(null, c, container))
@@ -135,7 +137,7 @@ function createRenderer(options) {
                 //n1,n2都存在
                 patchElement(n1, n2)
             }
-        } else if (typeof type === Text) { //文本元素 
+        } else if (type === Text) { //文本元素 
             if (!n1) {
                 const el = n2.el = createText(n2.children)
                 insert(el, container)

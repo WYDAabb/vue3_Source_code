@@ -7,7 +7,7 @@ function patchChildren(n1, n2, container) {
             n1.children.forEach((c) => unmount(c))
         }
         setElementText(container, n2.children)
-        //判断新子节点是狗是一组子节点
+        //判断新子节点是一组子节点  diff算法写在这里
     } else if (Array.isArray(n2.children)) {
         if (Array.isArray(n1.children)) { //判断旧的节点是也是一组子节点
             n1.children.forEach(c => unmount(c))
@@ -35,7 +35,7 @@ function patchElement(n1, n2) {
     const el = n2.el = n1.el
     const oldProps = n1.props
     const newProps = n2.props
-    //更新props
+    //第一步 更新props
     for (const key in newProps) {
         if (newProps[key] !== oldProps[key]) {
             patchProps(el, key, oldProps[key], newProps[key])

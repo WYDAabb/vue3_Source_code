@@ -131,7 +131,7 @@ function createRenderer(options) {
                 //n1,n2都存在
                 patchElement(n1, n2)
             }
-        } else if (typeof type === Text) {
+        } else if (type === Text) {
             if (!n1) {
                 const el = n2.el = createText(n2.children)
                 insert(el, container)

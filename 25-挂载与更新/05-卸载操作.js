@@ -43,9 +43,9 @@ function createRenderer(options) {
         //将元素添加到容器之中
         insert(el, container);
     }
-    //unmount卸载函数
+    //unmount卸载函数 生命周期 unmounted beforeUnmount也是在这里执行的
     function unmount(vnode) {
-        const parent = vnode.el.parentNode
+        const parent = vnode.el.parentNode //通过vnode.el的属性来拿到parent标签
         if (parent) {
             parent.removeChild(vnode.el)
         }
@@ -77,7 +77,7 @@ function createRenderer(options) {
             unmount(n1)
             n1 = null; //保证后续挂载操作执行
         }
-        //代码到这里保证n1 n2的所描述内容相同
+        //代码到这里保证n1 n2的所描述内容相同 解构出来n2的type
         const { type } = n2
         //判断呢n2type是字符串类型那么就是 普通标签元素
         if (typeof type === 'string') {
@@ -100,8 +100,8 @@ function createRenderer(options) {
             //如果新的vnode存在 将其与旧的vnode一起传递给patch函数 进行打补丁 我叫做patch比较函数
             patch(container._vnode, vnode, container)
         } else {
+            //如果旧的vnode存在 并且新的vnode不存在 说明是卸载操作
             if (container._vnode) {
-                //如果旧的vnode存在 并且新的vnode不存在 说明是卸载操作
                 unmount(container._vnode)
             }
         }

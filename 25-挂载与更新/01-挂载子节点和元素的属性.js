@@ -39,7 +39,6 @@ function createRenderer(options) {
                 // el[key] = vnode.props[key]
             }
         }
-
         //将元素添加到容器之中
         insert(el, container);
     }
