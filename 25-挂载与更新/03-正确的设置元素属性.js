@@ -9,7 +9,7 @@ const vnode1 = {
 
 //用in操作符判断key是否存在对应的DomProperties 以及特殊只读属性的处理
 function shouldSetAsProps(el, key, value) {
-    //特殊处理
+    //特殊处理 只能通过HTML Attribute来设置
     if (key === ' from' && el.taName === 'INPUT') return false
     //兜底
     return key in el
@@ -39,7 +39,6 @@ function createRenderer(options) {
                 patchProps(el, key, null, vnode.props[key])
             }
         }
-
         //将元素添加到容器之中
         insert(el, container);
     }
@@ -107,6 +106,7 @@ const options1 = {  //浏览器使用
                 el[key] = value;
             }
         } else {
+            //否则采用HTMLaAttribute来设置
             el.setAttribute(key, nextValue)
         }
     }
