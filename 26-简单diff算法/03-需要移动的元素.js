@@ -1,21 +1,21 @@
+const newVnode = {
+    type: 'div',
+    children: [
+        { type: 'p', children: '1', key: 1 },
+        { type: 'p', children: '2', key: 2 },
+        { type: 'p', children: 'hello', key: 3 }
+    ]
+}
+renderer.render(newVnode, document.querySelector('#app'))
 
 const oldVnode = {
     type: 'div',
     children: [
-        { type: 'p', children: '1' },
-        { type: 'p', children: '2' },
-        { type: 'p', children: '3' },
+        { type: 'p', children: 'world', key: 3 },
+        { type: 'p', children: '1', key: 1 },
+        { type: 'p', children: '2', key: 2 }
     ]
 }
-const newVnode = {
-    type: 'div',
-    children: [
-        { type: 'p', children: '4' },
-        { type: 'p', children: '5' },
-        { type: 'p', children: '6' }
-    ]
-}
-
 
 //用in操作符判断key是否存在对应的DomProperties 以及特殊只读属性的处理
 function shouldSetAsProps(el, key, value) {
@@ -82,26 +82,30 @@ function createRenderer(options) {
             //1.新旧 children
             const oldChildren = n1.children
             const newChildren = n2.children
-            //2.获取一组旧节点的长度
-            const oldLen = oldChildren.length
-            // 获取一组新节点的长度
-            const newLen = newChildren.length
-            //3.两组子节点的公共长度，即两组中较短那一组子节点的长度
-            const CommonLength = Math.min(oldLen, newLen)
-            //4.遍历较短的那一组 进行patch比对
-            for (let i = 0; i < CommonLength; i++) {
-                //调用patch函数逐个更新子节点
-                patch(oldChildren[i], newChildren[i], container)
-            }
-            //5.如果newLen>oldLen 说明有新子节点需要挂载
-            if (newLen > oldLen) {
-                for (let i = CommonLength; i < newLen; i++) {
-                    patch(null, newChildren[i], container)
+            //用来存储寻找过程中遇到的最大索引值
+            let lastIndex = 0
+            for (let i = 0; i < newChildren.length; i++) {
+                const newVNode = newChildren[i]
+                //遍历旧的children
+                for (let j = 0; j < oldChildren.length; j++) {
+                    const oldVnode = oldChildren[j]
+                    // 如果找到了具有相同 key 值的两个节点，则调用 `patch` 函数更新之
+                    if (newVNode.key === oldVnode.key) {
+                        patch(oldVNode, newVNode, container)
+                        if (j < lastIndex) {
+                            /* 
+                            如果当前找到的节点在旧Children中的索引小于最大索引LatIndex
+                            说明该节点需要移动
+                            */
+                            // 需要移动
+                        } else {
+                            //如果找到的当前节点字旧的Children中索引大于最大索引值
+                            // 更新 lastIndex
+                            lastIndex = j
+                        }
+                        break // 这里需要 break
+                    }
                 }
-            }
-            //6.如果oldLen>newLen 说明旧的子节点需要卸载
-            for (let i = CommonLength; i < oldLen; i++) {
-                unmount(oldChildren[i])
             }
         } else {
             //代码运行到这里说明新子节点不存在 旧的子节点是一组子节点 逐个卸载就行
