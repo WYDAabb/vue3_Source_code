@@ -1,21 +1,21 @@
+const newVnode = {
+    type: 'div',
+    children: [
+        { type: 'p', children: '1', key: 1 },
+        { type: 'p', children: '2', key: 2 },
+        { type: 'p', children: 'hello', key: 3 }
+    ]
+}
+renderer.render(newVnode, document.querySelector('#app'))
 
 const oldVnode = {
     type: 'div',
     children: [
-        { type: 'p', children: '1' },
-        { type: 'p', children: '2' },
-        { type: 'p', children: '3' },
+        { type: 'p', children: 'world', key: 3 },
+        { type: 'p', children: '1', key: 1 },
+        { type: 'p', children: '2', key: 2 }
     ]
 }
-const newVnode = {
-    type: 'div',
-    children: [
-        { type: 'p', children: '4' },
-        { type: 'p', children: '5' },
-        { type: 'p', children: '6' }
-    ]
-}
-
 
 //用in操作符判断key是否存在对应的DomProperties 以及特殊只读属性的处理
 function shouldSetAsProps(el, key, value) {
@@ -32,7 +32,7 @@ function createRenderer(options) {
     const { createElement, setElementText, insert, patchProps, createText, setText } = options
 
     //mountElement 挂载函数
-    function mountElement(vnode, container) {
+    function mountElement(vnode, container, anchor) {
         //让vnode.el引用真实dom元素 为了后续卸载dom节点使用 因为dom卸载节点需要使用父元素
         const el = vnode.el = createElement(vnode.type)
         //挂载子节点，首先判断children的类型 
@@ -52,9 +52,10 @@ function createRenderer(options) {
             }
         }
 
-        //将元素添加到容器之中
-        insert(el, container);
+        //将元素添加到容器之中 将锚点元素传给insert
+        insert(el, container, anchor);
     }
+
     //unmount卸载函数
     function unmount(vnode) {
         //Fragment处理所有子节点
@@ -67,6 +68,99 @@ function createRenderer(options) {
             parent.removeChild(vnode.el)
         }
     }
+
+    //双端diff算法
+    function patchKeyedChildren(n1, n2, container) {
+        const oldChildren = n1.children
+        const newChildren = n2.children
+
+        //1.建立四个索引
+        let oldStartIdx = 0
+        let oldEndIdx = oldChildren.length - 1
+        let newStartIdx = 0
+        let newEndIdx = newChildren.length - 1
+
+        //2.四个索引指向的vnode节点
+        let oldStartVNode = oldChildren[oldStartIdx]
+        let oldEndVNode = oldChildren[oldEndIdx]
+        let newStartVNode = newChildren[newStartIdx]
+        let newEndVNode = newChildren[newEndIdx]
+
+        //3.进行双端判断比较 进行多次判断封装带一个while循环中
+        while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
+            //新增判断分支 如果头部和尾部节点是undefined说明该节点被处理过了 直接跳走
+            if (!oldStartVNode) {
+                oldStartVNode = oldChildren[++oldStartIdx]
+            } else if (!oldEndVNode) {
+                oldEndVNode = newChildren[--oldEndIdx]
+            } else if (oldStartVNode.key === newStartVNode.key) {
+                //第一步：旧的第一个节点和新的第一个节点比较       
+                //调用patch函数进行打补丁   
+                patch(oldStartVNode, newStartVNode, container)
+                oldStartVNode = oldChildren[++oldStartIdx]
+                newStartVNode = newChildren[++newStartIdx]
+            } else if (oldEndVNode.key === newEndVNode.key) {
+                //第二步：旧的最后一个节点和新的最后一个节点比较
+                patch(oldEndVNode, newEndVNode, container)
+                //节点在新的顺序中仍然处于尾部，不需要移动，但仍然需要打补丁
+                oldEndVNode = oldChildren[--oldEndIdx]
+                newEndVNode = newChildren[--newEndIdx]
+            } else if (oldStartVNode.key === newEndVNode.key) {
+                //第三步：旧的第一个节点和新的最后一个节点比较
+                patch(oldStartVNode, newEndVNode, container)
+                // 将旧的一组子节点的头部节点对应的真实DOM节点oldStartVNode.el移动到
+                // 旧的一组子节点的尾部节点对应的真实DOM节点后面
+                insert(oldStartVNode.el, container, oldEndVNode.el.nextSibling)
+                oldStartVNode = oldChildren[++oldStartIdx]
+                newEndVNode = newChildren[--newEndIdx]
+            } else if (oldEndVNode.key === newStartVNode.key) {
+                //第四步：旧的最后一个节点和新的第一个节点比较
+                //仍然需要调用patch函数进行打补丁
+                patch(oldEndVNode, newStartVNode, container)
+                //移动DOM操作 oldEndVNode.el移动到oldStartVNode.el前面
+                insert(oldEndVNode.el, container, oldStartVNode.el)
+
+                //移动完成后，更新索引值，并指向下一个位置
+                oldEndVNode = oldChildren[--oldEndIdx]
+                newStartVNode = newChildren[++newStartIdx]
+            } else {
+                //遍历旧的一组子节点，试图寻找与newStartVNode拥有相同key值得节点
+                //idInOld 就是新的一组子节点的头部节点在旧的一组子节点中的索引
+                const idxInOld = oldChildren.findIndex(
+                    node => node.key === newStartVNode.key
+                )
+                //判断将要移动的位置 如果idxInOld大于0 说明找到了可用的节点，并且需要将其对应的真实DOM移动到头部
+                if (idxInOld > 0) {
+                    //idxInOld 位置对应的vnode就是需要移动的节点
+                    const vnodeToMove = oldChildren[idxInOld]
+                    //除了移动操作外还需要打补丁
+                    patch(vnodeToMove, newStartVNode, container)
+                    //将vnodeToMove.el移动到头部节点oldStartVNode之前，使用oldStartVNode作为锚点
+                    insert(vnodeToMove.el, container, oldStartVNode.el)
+                    // 给idxInOld位置的节点已经移走了 所以给这个设置为undefined
+                    oldChildren[idxInOld] = undefined
+                    //最后更新索引 
+                    newStartVNode = newChildren[++newStartIdx]
+
+                    //新增节点的挂载
+                } else {
+                    //将newStartVNode作为新节点挂载到头部，使用当前头部节点oldStartVNode.el作为锚点
+                    patch(null, newStartVNode, container, oldStartVNode.el)
+                }
+                newStartVNode = newChildren[++newStartIdx]
+            }
+        }
+
+        //4.如果循环结束后，检查索引值的情况 怕有一六节点
+        if (oldEndIdx < oldStartIdx && newStartIdx <= newEndIdx) {
+            // 如果满足条件 说明有新节点的遗留 挂载新节点
+            for (let i = newStartIdx; i <= newEndIdx; i++) {
+                patch(null, newChildren[i], container, oldStartVNode.el)
+            }
+        }
+
+    }
+
     //更新子节点
     function patchChildren(n1, n2, container) {
         //判断新子节点的类型是否为文字节点
@@ -78,31 +172,7 @@ function createRenderer(options) {
             setElementText(container, n2.children)
             //判断新子节点是狗是一组子节点 这里进行diff算法的比对
         } else if (Array.isArray(n2.children)) {
-            //重新实现两组子节点的更新方式
-            //1.新旧 children
-            const oldChildren = n1.children
-            const newChildren = n2.children
-            //2.获取一组旧节点的长度
-            const oldLen = oldChildren.length
-            // 获取一组新节点的长度
-            const newLen = newChildren.length
-            //3.两组子节点的公共长度，即两组中较短那一组子节点的长度
-            const CommonLength = Math.min(oldLen, newLen)
-            //4.遍历较短的那一组 进行patch比对
-            for (let i = 0; i < CommonLength; i++) {
-                //调用patch函数逐个更新子节点
-                patch(oldChildren[i], newChildren[i], container)
-            }
-            //5.如果newLen>oldLen 说明有新子节点需要挂载
-            if (newLen > oldLen) {
-                for (let i = CommonLength; i < newLen; i++) {
-                    patch(null, newChildren[i], container)
-                }
-            }
-            //6.如果oldLen>newLen 说明旧的子节点需要卸载
-            for (let i = CommonLength; i < oldLen; i++) {
-                unmount(oldChildren[i])
-            }
+            patchKeyedChildren(n1, n2, container)
         } else {
             //代码运行到这里说明新子节点不存在 旧的子节点是一组子节点 逐个卸载就行
             if (Array.isArray(n1.children)) {
@@ -136,7 +206,7 @@ function createRenderer(options) {
 
 
     //patch函数传入三个参数 第一个旧的vnode 第二个新的vnode 第三个同期
-    function patch(n1, n2, container) {
+    function patch(n1, n2, container, anchor) {
         if (n1 && n1.type !== n2.type) {
             //新旧vnode类型不同 旧的vnode卸载
             unmount(n1)
@@ -148,7 +218,7 @@ function createRenderer(options) {
         if (typeof type === 'string') {
             //如果n1不存在，意味着挂载 则调用mountElement函数完成挂载
             if (!n1) {
-                mountElement(n2, container);
+                mountElement(n2, container, anchor);
             } else {
                 //n1,n2都存在
                 patchElement(n1, n2)
@@ -278,3 +348,13 @@ const options1 = {  //浏览器使用
 const renderer = createRenderer(options1)
 
 renderer.render(TextVnode, document.querySelector('#app'))
+
+
+/*
+insertBefore用法
+let insertedNode = parentNode.insertBefore(newNode, referenceNode);
+newNode：将要插入的节点
+referenceNode：被参照的节点（即要插在该节点之前）
+insertedNode：插入后的节点
+parentNode：父节点
+*/
