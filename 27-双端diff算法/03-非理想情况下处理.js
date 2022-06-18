@@ -135,7 +135,7 @@ function createRenderer(options) {
                     const vnodeToMove = oldChildren[idxInOld]
                     //除了移动操作外还需要打补丁
                     patch(vnodeToMove, newStartVNode, container)
-                    //将vnodeToMove.el移动到头部节点oldStartVNode之前，使用oldStartVNode作为锚点
+                    //将vnodeToMove.el移动到头部节点oldStartVNode之前，使用oldStartVNode作为锚点 移动到oldStartVNode之前
                     insert(vnodeToMove.el, container, oldStartVNode.el)
                     // 给idxInOld位置的节点已经移走了 所以给这个设置为undefined
                     oldChildren[idxInOld] = undefined
