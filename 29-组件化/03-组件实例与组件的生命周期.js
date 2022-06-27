@@ -54,17 +54,6 @@ function createRenderer(options) {
 
     const { createElement, setElementText, insert, patchProps, createText, setText } = options
 
-    //挂载组件函数
-    function mountComponent(vnode, container, anchor) {
-        //通过vnode获取组件的选项对象,即vnode.type
-        const componentOptions = vnode.type
-        //获取组件的渲染函数render
-        const { render } = componentOptions
-        //执行渲染函数，获取组件要渲染的内容，即render函数返回的虚拟dom
-        const subTree = render()
-        //调用patch函数来挂载组件所描述的内容，即SubTree
-        patch(null, subTree, container, vnode)
-    }
 
     //mountElement 挂载函数
     function mountElement(vnode, container, anchor) {
@@ -353,6 +342,104 @@ function createRenderer(options) {
                 patchComponent(n1, n2, anchor)
             }
         }
+
+        /* 设计一个微任务缓存队列 实现响应式缓存 */
+        //实现微任务队列 调度器控制执行次数
+        const queue = new Set();
+        //使用promise.resolve创建一个promise实例，我们用它将一个任务添加到微任务队列
+        const p = Promise.resolve();
+        //一个标志看是否在刷新队列 
+        let isFlushing = false;
+        function queueJob(job) {
+            //添加到队列之中
+            queue.add(job)
+            if (!isFlushing) {
+                isFlushing = true
+                //在微任务中刷新队列执行任务
+                p.then(() => {
+                    try {
+                        queue.forEach(jon => job())
+                    } finally {
+                        //清空状态
+                        isFlushing = false
+                        queue.clear()
+                    }
+                })
+            }
+        }
+
+        //挂载组件函数
+        function mountComponent(vnode, container, anchor) {
+            //1.通过vnode获取组件的选项对象,即vnode.type
+            const componentOptions = vnode.type
+            //获取组件的函数生命周期等各种信息
+            const { render, data, beforeCreate, created, beforeMount, mounted, beforeUpdate, updated, } = componentOptions
+
+            //生命周期-1:在这里调用beforeCreate钩子
+            beforeCreate && beforeCreate();
+
+            //3.调用data函数得到原始数据，调用reactive函数将其包裹成响应式数据
+            const state = reactive(data())
+
+            //定义一个组件实例,一个组件实例本质上就是一个对象，它包含与组件有关的状态信息
+            const instance = {
+                //组件自身的状态数据 即data
+                state,
+                //一个布尔值，用来表示组件是否已经被挂载，初始值为false
+                isMounted: false,
+                //组件所渲染的内容，即子树（subTree）
+                subTree: null
+            }
+
+            //将组件实例设置上vnode上，用于后续更新
+            vnode.comoponent = instance
+
+            //生命周期-2:在这里调用Created钩子
+            created && created.call(state)
+
+
+            //数据改变 实现自更新
+            effect(() => {
+                //调用组件的渲染函数，获得子树
+                const subTree = render.call(state, state)
+                //检查组件是否已经挂载
+                if (!instance.isMounted) {
+                    //生命周期-3:在这里调用 beforeMount钩子
+                    beforeMount && beforeMount.call(state)
+
+                    //初次挂载，调用patch函数第一个参数传递null
+                    patch(null, subTree, container, anchor)
+                    //重点：将组件实例的isMounted设置为true，这样当更新发生时就不会再次进行挂载操作，
+                    //二十执行更新
+                    instance.isMounted = true;
+
+                    //生命周期-4:在这里调用 mounted狗子
+                    mounted && mounted.call(state);
+
+                } else {
+                    //生命周期-5：在这里调用 beforeUpdate钩子
+                    beforeUpdate && beforeUpdate.call(state);
+
+                    // 当isMounted为true时，说明组件已经被挂载，只需要完成自更新就可以，
+                    // 所以在调用patch函数时，第一个参数为组件上一次渲染的子树，
+                    //意思是 使用新的子树与上一次渲染的子树进行打补丁操作
+                    patch(instance.subTree, subTree, container, anchor)
+
+                    //生命周期-6:在这里调用 updated 钩子
+                    updated && updated.call(state)
+                }
+                //更新组件实例的子树
+                instance.subTree = subTree
+            },
+                {
+                    //指定该副作用函数的调度器为queueJob
+                    scheduler: queueJob
+                })
+        }
+
+
+
+
     }
 
     function render(vnode, container) {
@@ -459,6 +546,7 @@ const options1 = {  //浏览器使用
 }
 const renderer = createRenderer(options1)
 
+//.vue文件编译成这个对象
 const myComponent = {
     //组件名称，可选
     name: 'MyComponent',
@@ -480,7 +568,7 @@ const myComponent = {
 
 //渲染示例 描述组件的vnode对象
 const CompVNode = {
-    type: myComponent
+    type: myComponent //因为组件的类型是object
 }
 //调用渲染器来渲染组件
 renderer.render(CompVNode, document.querySelector('#app'))
