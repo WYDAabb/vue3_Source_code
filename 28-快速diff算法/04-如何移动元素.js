@@ -156,7 +156,7 @@ function createRenderer(options) {
             //锚点元素
             const anchor = anchorIndex < newChildren.length ? newChildren[anchorIndex].el : null
             //采用while循环 调用patch函数逐个挂载
-            while (j < newEnd) {
+            while (j <= newEnd) {
                 patch(null, newChildren[j++], container, anchor)
             }
 
@@ -217,6 +217,7 @@ function createRenderer(options) {
 
             /* 如果moved为true，则需要进行DOM移动操作 */
             if (moved) {
+                //返回最长递增子序列的索引
                 const seq = lis(source)
                 /* 
                 定义两个索引 一个指向最长递增子序列的最后一个元素 s
@@ -239,7 +240,7 @@ function createRenderer(options) {
                         const anchor = nextPos < newChildren.length
                             ? newChildren[nextPos].el
                             : null
-                        // 挂载
+                        // 挂载新的节点
                         patch(null, newVNode, container, anchor)
                     } else if (i !== seq[s]) {
                         //r如果节点的索引 i 不等于seq[s]的值,说明该节点需要移动
@@ -262,8 +263,6 @@ function createRenderer(options) {
                     }
 
                 }
-
-
 
             }
         }
