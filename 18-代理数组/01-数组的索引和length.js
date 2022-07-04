@@ -26,7 +26,7 @@ function createReactive(obj, isShallow = false, isReadOnly = false) {
     })
 }
 
-// 根据判断类型是否是ADD 并且判断target如果是数组类型 那么我们就需要处理.length长度的问题
+// 根据判断类型是否是ADD 并且判断target如果是数组类型 那么就需要处理.length长度的问题
 //触发变化函数
 function trigger(target, key, key, newValue) {
     const depsMap = bucket.get(target);
